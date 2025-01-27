@@ -447,8 +447,43 @@ See CONTRIBUTING.md for guidelines
 
 # Technical Details
 
+## Architecture
+```mermaid
+flowchart TD
+    subgraph Client Browser
+        UI[HTML/JS Client]
+        WebRTC[WebRTC Peer Connection]
+    end
+
+    subgraph "fly.io Infrastructure"
+        subgraph "API Server"
+            FastAPI[FastAPI + AIOHTTP]
+            SignalingServer[WebSocket Signaling Server]
+            OAuth[OAuth 2.0 Handler]
+            RoomManager[Room Management]
+        end
+        
+        subgraph "TURN Server"
+            COTURN[COTURN Server]
+        end
+        
+        subgraph "State Management"
+            Redis[Redis Cache]
+        end
+    end
+
+    UI -->|HTTPS| FastAPI
+    UI -->|WebSocket| SignalingServer
+    WebRTC -->|Media Stream| COTURN
+    FastAPI -->|Session Management| Redis
+    FastAPI -->|Auth| OAuth
+    SignalingServer -->|Room State| RoomManager
+    RoomManager -->|Cache| Redis
+```
+
 ## Client Server Flow
 
+```
 Client A                Server                 Client B
    |                      |                      |
    |-- Join Room -------->|                      |
@@ -462,3 +497,5 @@ Client A                Server                 Client B
    |                      |                      |
    |-- ICE Candidate ---->|                      |
    |                      |-- ICE Candidate ---->|
+
+```

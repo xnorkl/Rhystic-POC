@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Set
 from aiohttp import web
 import uuid
@@ -6,7 +6,7 @@ import uuid
 @dataclass
 class Room:
     id: str
-    peers: Set[web.WebSocketResponse]
+    peers: Set[web.WebSocketResponse] = field(default_factory=set)
     max_peers: int = 8  # Updated to support 8 peers
     
     def get_peer_ids(self) -> Set[int]:
@@ -19,7 +19,7 @@ class RoomManager:
 
     def create_room(self, room_id: str):
         if room_id not in self.rooms:
-            self.rooms[room_id] = Room(room_id, self.max_peers)
+            self.rooms[room_id] = Room(id=room_id)
         return self.rooms[room_id]
 
     def get_room(self, room_id: str):
