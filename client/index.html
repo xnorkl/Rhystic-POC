@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Rhystic</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <h1>Rhystic</h1>
+            <div class="room-controls">
+                <input type="text" id="roomId" placeholder="Enter room ID">
+                <button id="joinBtn">Join Room</button>
+                <button id="leaveBtn" disabled>Leave Room</button>
+            </div>
+        </header>
+
+        <main class="video-grid">
+            <div class="video-container local">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div class="video-overlay">You</div>
+            </div>
+            <div id="remoteVideos"></div>
+        </main>
+
+        <footer class="controls">
+            <button id="muteAudio">
+                <span class="icon">🎤</span>
+            </button>
+            <button id="muteVideo">
+                <span class="icon">📹</span>
+            </button>
+        </footer>
+    </div>
+
+    <script type="module">
+        import { SignalingClient } from './js/signaling.js';
+        import { WebRTCClient } from './js/webrtc.js';
+        import { RoomClient } from './js/room.js';
+
+        const config = {
+            iceServers: [{
+                urls: 'stun:stun.l.google.com:19302'
+            }]
+        };
+
+        const signaling = new SignalingClient('wss://your-server.com');
+        const webrtc = new WebRTCClient(signaling, config);
+        const room = new RoomClient(signaling, webrtc);
+
+        // UI Event Handlers
+        document.getElementById('joinBtn').onclick = async () => {
+            const roomId = document.getElementById('roomId').value;
+            try {
+                const stream = await room.joinRoom(roomId);
+                document.getElementById('localVideo').srcObject = stream;
+                document.getElementById('joinBtn').disabled = true;
+                document.getElementById('leaveBtn').disabled = false;
+            } catch (error) {
+                console.error('Failed to join room:', error);
+            }
+        };
+
+        document.getElementById('leaveBtn').onclick = () => {
+            room.leaveRoom();
+            document.getElementById('joinBtn').disabled = false;
+            document.getElementById('leaveBtn').disabled = true;
+            document.getElementById('localVideo').srcObject = null;
+        };
+
+        // Handle remote streams
+        webrtc.onTrack = (stream) => {
+            const videoElement = document.createElement('video');
+            videoElement.autoplay = true;
+            videoElement.playsinline = true;
+            videoElement.srcObject = stream;
+            document.getElementById('remoteVideos').appendChild(videoElement);
+        };
+    </script>
+</body>
+</html>

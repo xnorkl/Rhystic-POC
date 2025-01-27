@@ -1,0 +1,59 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - DEBUG=1
+      - TURN_SERVER=coturn
+      - TURN_SECRET=development_secret_key
+      - TURN_PORT=3478
+      - HOST=0.0.0.0
+      - PORT=8080
+      - MAX_PEERS_PER_ROOM=8
+      - PEER_CONNECTION_TIMEOUT=30
+      - AUTH_TOKEN_EXPIRY=3600
+      - CREDENTIAL_ROTATION=3600
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=structured
+      - ENABLE_METRICS=1
+      - METRICS_PORT=9090
+      - DEV_AUTO_RELOAD=1
+      - DEV_STATIC_FILES=1
+      - HMAC_KEY=development_secret_key
+    volumes:
+      - .:/app
+    depends_on:
+      - coturn
+    networks:
+      - rhystic_net
+
+  coturn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49152-49252:49152-49252"
+      - "49152-49252:49152-49252/udp"
+    volumes:
+      - ./config/turnserver.conf:/etc/turnserver.conf:ro
+    environment:
+      TURN_SECRET: "development_secret_key"
+      TURN_REALM: "localhost"
+    command: [
+      "-n",
+      "-c", "/etc/turnserver.conf"
+    ]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -zu localhost 3478 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - rhystic_net
+
+networks:
+  rhystic_net:
+    driver: bridge 
