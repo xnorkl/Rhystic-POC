@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rhystic - P2P Video Chat</title>
+    <style>
+        :root {
+            --primary: #1a73e8;
+            --primary-dark: #1557b0;
+            --danger: #dc3545;
+            --gray: #5f6368;
+            --light-gray: #f8f9fa;
+            --border: #dadce0;
+        }
+        
+        body {
+            font-family: 'Roboto', -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            color: var(--gray);
+            background: white;
+        }
+        
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: var(--primary-dark);
+        }
+        
+        button:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+        }
+        
+        input {
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+            margin: 0 8px;
+        }
+        
+        #controls {
+            margin-bottom: 24px;
+            padding: 16px;
+            background: var(--light-gray);
+            border-radius: 8px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            font-weight: 500;
+            color: var(--gray);
+        }
+        
+        #videos {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+        
+        video {
+            width: 100%;
+            border-radius: 8px;
+            background: var(--light-gray);
+        }
+        
+        h3 {
+            color: var(--gray);
+            font-weight: 500;
+            margin: 24px 0 16px;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="controls">
+        <button id="startButton">Start Camera</button>
+        <button id="refreshRooms">Refresh Rooms</button>
+        <input id="roomId" type="text" placeholder="Room ID">
+        <button id="joinButton">Join Room</button>
+    </div>
+    <div id="roomList">
+        <h3>Available Rooms</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Room ID</th>
+                    <th>Peers</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="roomsTable"></tbody>
+        </table>
+    </div>
+    <div id="videos">
+        <video id="localVideo" autoplay playsinline></video>
+        <div id="remoteVideos"></div>
+    </div>
+
+    <script>
+        // Room management
+        const roomsTable = document.getElementById('roomsTable');
+        const refreshButton = document.getElementById('refreshRooms');
+        
+        async function fetchRooms() {
+            try {
+                const response = await fetch('/api/rooms');
+                const data = await response.json();
+                roomsTable.innerHTML = '';
+                
+                data.rooms.forEach(room => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${room.id}</td>
+                        <td>${room.peer_count}/${room.max_peers}</td>
+                        <td>${room.is_full ? 'Full' : 'Available'}</td>
+                        <td>
+                            <button 
+                                onclick="joinRoom('${room.id}')"
+                                ${room.is_full ? 'disabled' : ''}>
+                                Join
+                            </button>
+                        </td>
+                    `;
+                    roomsTable.appendChild(row);
+                });
+            } catch (e) {
+                console.error('Error fetching rooms:', e);
+            }
+        }
+        
+        refreshButton.onclick = fetchRooms;
+        
+        // Initial room fetch
+        fetchRooms();
+
+        // Camera handling
+        const startButton = document.getElementById('startButton');
+        const localVideo = document.getElementById('localVideo');
+
+        startButton.onclick = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                localVideo.srcObject = stream;
+                startButton.disabled = true;
+            } catch (e) {
+                console.error('Error accessing media devices:', e);
+            }
+        };
+    </script>
+</body>
+</html> 
