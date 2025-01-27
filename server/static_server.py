@@ -16,17 +16,7 @@ class StaticFileServer:
         self.app.router.add_static('/css/', path=client_root / 'css')
         
         # Serve index.html at root
-        self.app.router.add_get('/', self.serve_index)
+        self.app.router.add_get('/', self.handle_index)
 
-    async def serve_index(self, request: web.Request) -> web.Response:
-        project_root = pathlib.Path(__file__).parent.parent
-        index_path = project_root / 'client' / 'index.html'
-        
-        if not index_path.exists():
-            raise web.HTTPNotFound()
-            
-        with open(index_path) as f:
-            return web.Response(
-                text=f.read(),
-                content_type='text/html'
-            )
+    async def handle_index(self, request):
+        return web.FileResponse('static/index.html')
