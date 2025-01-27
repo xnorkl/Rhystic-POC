@@ -5,7 +5,7 @@ from .room_manager import RoomManager
 from .signal_handler import SignalingHandler
 from .turn import TURNManager, TURNConfig
 from .static_server import StaticFileServer
-from .handlers import handle_create_user, handle_create_room, handle_get_room
+from .handlers import handle_create_user, handle_create_room, handle_get_room, handle_list_rooms
 import os
 
 async def init_app():
@@ -56,6 +56,7 @@ async def init_app():
     
     # REST API routes
     app.router.add_post('/api/users', handle_create_user)
+    app.router.add_get('/api/rooms', handle_list_rooms)
     app.router.add_post('/api/rooms', handle_create_room)
     app.router.add_get('/api/rooms/{room_id}', handle_get_room)
     
