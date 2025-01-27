@@ -24,13 +24,12 @@ async def init_debug_app():
     # Add development middleware
     app.middlewares.extend([
         # Log all requests
-        async def request_logger(app, handler):
-            async def middleware(request):
-                logger.debug(f"{request.method} {request.path}")
-                response = await handler(request)
-                logger.debug(f"Response: {response.status}")
-                return response
-            return middleware,
+        @web.middleware
+        async def request_logger(request, handler):
+            logger.debug(f"{request.method} {request.path}")
+            response = await handler(request)
+            logger.debug(f"Response: {response.status}")
+            return response,
         
         # Enable CORS for development
         async def cors_middleware(app, handler):

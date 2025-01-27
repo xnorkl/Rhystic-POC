@@ -7,6 +7,18 @@ class SignalingHandler:
     def __init__(self, room_manager: RoomManager):
         self.room_manager = room_manager
     
+    async def _handle_ws_message(self, ws: web.WebSocketResponse, room_id: str, msg) -> None:
+        if msg.type == WSMsgType.TEXT:
+            try:
+                data = json.loads(msg.data)
+                for peer in self.room_manager.get_peers(room_id):
+                    if peer != ws:
+                        await peer.send_json(data)
+            except json.JSONDecodeError:
+                pass
+        elif msg.type == WSMsgType.ERROR:
+            print(f'WebSocket error: {ws.exception()}')
+
     async def handle_connection(self, request: web.Request) -> web.WebSocketResponse:
         # Get parameters
         room_id = request.query.get('room')
@@ -16,7 +28,16 @@ class SignalingHandler:
             raise web.HTTPBadRequest(text="room and user_id are required")
 
         # Create WebSocket
-        ws = web.WebSocketResponse()
+        ws = web.WebSocketResponse(
+            autoping=True,
+            heartbeat=30.0,
+            protocols=['webrtc-signaling']
+        )
+        
+        # Check if WebSocket upgrade is possible
+        if not ws.can_prepare(request):
+            raise web.HTTPBadRequest(text="WebSocket upgrade required")
+
         await ws.prepare(request)
         
         # Join room
@@ -27,17 +48,7 @@ class SignalingHandler:
         try:
             # Handle messages
             async for msg in ws:
-                if msg.type == WSMsgType.TEXT:
-                    try:
-                        data = json.loads(msg.data)
-                        # Broadcast to other peers in room
-                        for peer in self.room_manager.get_peers(room_id):
-                            if peer != ws:  # Don't send back to sender
-                                await peer.send_json(data)
-                    except json.JSONDecodeError:
-                        continue
-                elif msg.type == WSMsgType.ERROR:
-                    print(f'WebSocket error: {ws.exception()}')
+                await self._handle_ws_message(ws, room_id, msg)
         finally:
             # Clean up on disconnect
             self.room_manager.leave_room(room_id, ws)
