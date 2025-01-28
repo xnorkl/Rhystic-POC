@@ -90,10 +90,19 @@
             font-weight: 500;
             margin: 24px 0 16px;
         }
+        
+        #userId {
+            padding: 8px 16px;
+            background: var(--light-gray);
+            border-radius: 4px;
+            margin-bottom: 16px;
+            font-family: monospace;
+        }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
+    <div id="userId">Loading user ID...</div>
     <div id="controls">
         <button id="startButton">Start Camera</button>
         <button id="refreshRooms">Refresh Rooms</button>
@@ -120,6 +129,32 @@
     </div>
 
     <script>
+        // User management
+        let currentUserId = null;
+        
+        async function createUser() {
+            try {
+                const response = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: `user_${Math.random().toString(36).substr(2, 9)}`,
+                        display_name: `Guest ${Math.floor(Math.random() * 1000)}`
+                    })
+                });
+                const data = await response.json();
+                currentUserId = data.user_id;
+                document.getElementById('userId').textContent = `User ID: ${currentUserId}`;
+                return currentUserId;
+            } catch (e) {
+                console.error('Error creating user:', e);
+                document.getElementById('userId').textContent = 'Error creating user';
+            }
+        }
+
+        // Create user on page load
+        createUser();
+
         // Room management
         const roomsTable = document.getElementById('roomsTable');
         const refreshButton = document.getElementById('refreshRooms');
@@ -172,6 +207,18 @@
                 console.error('Error accessing media devices:', e);
             }
         };
+
+        async function joinRoom(roomId) {
+            if (!currentUserId) {
+                alert('Please wait for user creation to complete');
+                return;
+            }
+
+            const ws = new WebSocket(
+                `ws://${window.location.host}/ws?room=${roomId}&user_id=${currentUserId}`
+            );
+            // ... rest of join room code
+        }
     </script>
 </body>
 </html> 
