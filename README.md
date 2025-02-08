@@ -471,6 +471,7 @@ flowchart TD
             SignalingServer[WebSocket Signaling Server]
             OAuth[OAuth 2.0 Handler]
             RoomManager[Room Management]
+            VLMProcessor[Vision Language Model]
         end
 
         subgraph "TURN Server"
@@ -479,6 +480,12 @@ flowchart TD
 
         subgraph "State Management"
             Redis[Redis Cache]
+        end
+
+        subgraph "ML Infrastructure"
+            VLM[Vision Language Model]
+            ObjectDetection[Object Detection Service]
+            ModelCache[Model Cache]
         end
     end
 
@@ -489,6 +496,11 @@ flowchart TD
     FastAPI -->|Auth| OAuth
     SignalingServer -->|Room State| RoomManager
     RoomManager -->|Cache| Redis
+    WebRTC -->|Video Frames| VLMProcessor
+    VLMProcessor -->|Frame Analysis| VLM
+    VLM -->|Object Detection| ObjectDetection
+    ObjectDetection -->|Results| ModelCache
+    VLMProcessor -->|Cached Results| ModelCache
 ```
 
 ## Client Server Flow
