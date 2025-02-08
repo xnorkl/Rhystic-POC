@@ -5,6 +5,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    logging:
+      driver: journald
+      options:
+        tag: rhystic-api
     environment:
       - DEBUG=1
       - TURN_SERVER=coturn
@@ -37,6 +41,10 @@ services:
       - "3478:3478/udp"
       - "49152-49252:49152-49252"
       - "49152-49252:49152-49252/udp"
+    logging:
+      driver: journald
+      options:
+        tag: rhystic-turn
     volumes:
       - ./config/turnserver.conf:/etc/turnserver.conf:ro
     environment:

@@ -2,10 +2,13 @@ from aiohttp import web
 import uvloop
 import asyncio
 from .room_manager import RoomManager
+from .user_manager import UserManager
 from .signal_handler import SignalingHandler
 from .turn import TURNManager, TURNConfig
 from .static_server import StaticFileServer
-from .handlers import handle_create_user, handle_create_room, handle_get_room, handle_list_rooms
+from .handlers import handle_create_user, handle_get_user, handle_list_users, \
+    handle_create_room, handle_get_room, handle_list_rooms, handle_join_room, \
+    handle_leave_room
 import os
 
 async def init_app():
@@ -22,6 +25,7 @@ async def init_app():
     
     # Initialize components
     room_manager = RoomManager()
+    user_manager = UserManager()
     
     # Development TURN config for localhost
     if app['debug']:
@@ -48,6 +52,7 @@ async def init_app():
     
     # Store references
     app['room_manager'] = room_manager
+    app['user_manager'] = user_manager
     app['turn_manager'] = turn_manager
     
     # Setup routes
@@ -55,10 +60,18 @@ async def init_app():
     app.router.add_get('/turn', turn_manager.get_credentials)
     
     # REST API routes
+
+    # User API routes
     app.router.add_post('/api/users', handle_create_user)
+    app.router.add_get('/api/users', handle_list_users)
+    app.router.add_get('/api/users/{user_id}', handle_get_user)
+
+    # Room API routes
     app.router.add_get('/api/rooms', handle_list_rooms)
     app.router.add_post('/api/rooms', handle_create_room)
     app.router.add_get('/api/rooms/{room_id}', handle_get_room)
+    app.router.add_post('/api/rooms/{room_id}/join', handle_join_room)
+    app.router.add_post('/api/rooms/{room_id}/leave', handle_leave_room)
     
     return app
 

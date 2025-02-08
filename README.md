@@ -32,12 +32,22 @@ This will start:
 - Code changes will automatically reload
 - Logs can be viewed with:
   ```bash
-  # All services
+  # All services via docker
   docker compose logs -f
 
-  # Specific service
+  # Individual services via docker
   docker compose logs -f api
   docker compose logs -f coturn
+
+  # All services via journald
+  journalctl -f -t rhystic-api -t rhystic-turn
+
+  # Individual services
+  journalctl -f -t rhystic-api    # API logs only
+  journalctl -f -t rhystic-turn   # TURN server logs only
+
+  # Filter by severity
+  journalctl -f -t rhystic-api -p err  # Errors only
   ```
 
 - To rebuild after dependency changes:
@@ -462,11 +472,11 @@ flowchart TD
             OAuth[OAuth 2.0 Handler]
             RoomManager[Room Management]
         end
-        
+
         subgraph "TURN Server"
             COTURN[COTURN Server]
         end
-        
+
         subgraph "State Management"
             Redis[Redis Cache]
         end
@@ -499,3 +509,17 @@ Client A                Server                 Client B
    |                      |-- ICE Candidate ---->|
 
 ```
+
+### Logging
+
+The services use journald for structured logging:
+
+- **API Server** (`rhystic-api`):
+  - Application logs
+  - WebSocket events
+  - Room management
+
+- **TURN Server** (`rhystic-turn`):
+  - Connection attempts
+  - Relay statistics
+  - Authentication events

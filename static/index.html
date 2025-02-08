@@ -2,103 +2,7 @@
 <html>
 <head>
     <title>Rhystic - P2P Video Chat</title>
-    <style>
-        :root {
-            --primary: #1a73e8;
-            --primary-dark: #1557b0;
-            --danger: #dc3545;
-            --gray: #5f6368;
-            --light-gray: #f8f9fa;
-            --border: #dadce0;
-        }
-        
-        body {
-            font-family: 'Roboto', -apple-system, sans-serif;
-            margin: 0;
-            padding: 20px;
-            color: var(--gray);
-            background: white;
-        }
-        
-        button {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        
-        button:hover {
-            background: var(--primary-dark);
-        }
-        
-        button:disabled {
-            background: var(--border);
-            cursor: not-allowed;
-        }
-        
-        input {
-            padding: 8px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            font-size: 14px;
-            margin: 0 8px;
-        }
-        
-        #controls {
-            margin-bottom: 24px;
-            padding: 16px;
-            background: var(--light-gray);
-            border-radius: 8px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 16px 0;
-        }
-        
-        th, td {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        th {
-            font-weight: 500;
-            color: var(--gray);
-        }
-        
-        #videos {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 16px;
-            margin-top: 24px;
-        }
-        
-        video {
-            width: 100%;
-            border-radius: 8px;
-            background: var(--light-gray);
-        }
-        
-        h3 {
-            color: var(--gray);
-            font-weight: 500;
-            margin: 24px 0 16px;
-        }
-        
-        #userId {
-            padding: 8px 16px;
-            background: var(--light-gray);
-            border-radius: 4px;
-            margin-bottom: 16px;
-            font-family: monospace;
-        }
-    </style>
+    <link rel="stylesheet" href="/css/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -106,17 +10,17 @@
     <div id="controls">
         <button id="startButton">Start Camera</button>
         <button id="refreshRooms">Refresh Rooms</button>
-        <input id="roomId" type="text" placeholder="Room ID">
-        <button id="joinButton">Join Room</button>
+        <button id="createButton">Create Room</button>
     </div>
     <div id="roomList">
-        <h3>Available Rooms</h3>
+        <h3>Rooms</h3>
         <table>
             <thead>
                 <tr>
                     <th>Room ID</th>
                     <th>Peers</th>
                     <th>Status</th>
+                    <th>Current</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -125,13 +29,34 @@
     </div>
     <div id="videos">
         <video id="localVideo" autoplay playsinline></video>
-        <div id="remoteVideos"></div>
+        <div id="remoteVideos" class="remote-grid"></div>
     </div>
 
     <script>
         // User management
         let currentUserId = null;
-        
+        let currentRoom = null;
+        let currentWs = null;
+        let localStream = null;
+
+        // Check for existing session
+        async function getOrCreateUser() {
+            // Try to get existing user ID from localStorage
+            const savedUserId = localStorage.getItem('userId');
+            if (savedUserId) {
+                currentUserId = savedUserId;
+                document.getElementById('userId').textContent = `User ID: ${currentUserId}`;
+                return currentUserId;
+            }
+
+            // Create new user if none exists
+            const userId = await createUser();
+            if (userId) {
+                localStorage.setItem('userId', userId);
+            }
+            return userId;
+        }
+
         async function createUser() {
             try {
                 const response = await fetch('/api/users', {
@@ -145,37 +70,72 @@
                 const data = await response.json();
                 currentUserId = data.user_id;
                 document.getElementById('userId').textContent = `User ID: ${currentUserId}`;
+
+                // Join auto-created room if in development
+                if (data.auto_created_room) {
+                    await handleJoinRoom(data.auto_created_room);
+                }
+
                 return currentUserId;
             } catch (e) {
                 console.error('Error creating user:', e);
                 document.getElementById('userId').textContent = 'Error creating user';
+                return null;
             }
         }
 
-        // Create user on page load
-        createUser();
+        // Initialize user on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            getOrCreateUser().catch(e => {
+                console.error('Error initializing user:', e);
+                document.getElementById('userId').textContent = 'Error initializing user';
+            });
+        });
+
+        // Warn about multiple tabs
+        const bc = new BroadcastChannel('rhystic_session');
+        bc.onmessage = (event) => {
+            if (event.data.type === 'session_check') {
+                alert('Warning: Multiple sessions detected. This may cause issues with video streaming.');
+            }
+        };
+        bc.postMessage({ type: 'session_check' });
 
         // Room management
         const roomsTable = document.getElementById('roomsTable');
         const refreshButton = document.getElementById('refreshRooms');
-        
+
+        // Auto-refresh rooms every 5 seconds
+        setInterval(fetchRooms, 5000);
+
+        function getRoomStatus(room) {
+            if (room.is_full) return 'Full';
+            if (room.peer_count > 0) return 'Active';
+            return 'Empty';
+        }
+
         async function fetchRooms() {
             try {
                 const response = await fetch('/api/rooms');
                 const data = await response.json();
                 roomsTable.innerHTML = '';
-                
+
                 data.rooms.forEach(room => {
                     const row = document.createElement('tr');
+                    const isCurrentRoom = room.id === currentRoom;
+                    const roomStatus = getRoomStatus(room);
                     row.innerHTML = `
                         <td>${room.id}</td>
                         <td>${room.peer_count}/${room.max_peers}</td>
-                        <td>${room.is_full ? 'Full' : 'Available'}</td>
+                        <td>${roomStatus}</td>
+                        <td>${isCurrentRoom ? '✓' : ''}</td>
                         <td>
                             <button 
-                                onclick="joinRoom('${room.id}')"
-                                ${room.is_full ? 'disabled' : ''}>
-                                Join
+                                onclick="${isCurrentRoom ? 'leaveRoom()' : `handleJoinRoom('${room.id}')`}"
+                                ${room.is_full ? 'disabled' : ''}
+                                style="${isCurrentRoom ? 'background: var(--danger)' : ''}"
+                            >
+                                ${isCurrentRoom ? 'Leave' : 'Join'}
                             </button>
                         </td>
                     `;
@@ -185,9 +145,9 @@
                 console.error('Error fetching rooms:', e);
             }
         }
-        
+
         refreshButton.onclick = fetchRooms;
-        
+
         // Initial room fetch
         fetchRooms();
 
@@ -202,23 +162,223 @@
                     audio: true
                 });
                 localVideo.srcObject = stream;
+                localStream = stream;
                 startButton.disabled = true;
             } catch (e) {
                 console.error('Error accessing media devices:', e);
             }
         };
 
-        async function joinRoom(roomId) {
+        const createButton = document.getElementById('createButton');
+        const remoteVideos = document.getElementById('remoteVideos');
+
+        createButton.onclick = async () => {
+            try {
+                const response = await fetch('/api/rooms', { method: 'POST' });
+                const data = await response.json();
+                joinRoom(data.room_id);
+            } catch (e) {
+                console.error('Error creating room:', e);
+            }
+        };
+
+        async function handleJoinRoom(roomId) {
             if (!currentUserId) {
                 alert('Please wait for user creation to complete');
                 return;
             }
 
-            const ws = new WebSocket(
-                `ws://${window.location.host}/ws?room=${roomId}&user_id=${currentUserId}`
-            );
-            // ... rest of join room code
+            try {
+                // First join via REST API
+                const joinResponse = await fetch(`/api/rooms/${roomId}/join?user_id=${currentUserId}`, {
+                    method: 'POST'
+                });
+
+                if (!joinResponse.ok) {
+                    throw new Error('Failed to join room');
+                }
+
+                // Then establish WebSocket connection
+                await joinRoom(roomId);
+            } catch (e) {
+                console.error('Error joining room:', e);
+                alert('Failed to join room');
+            }
+        }
+
+        async function joinRoom(roomId) {
+            try {
+                console.group(`Joining Room: ${roomId}`);
+                // Leave current room if any
+                if (currentRoom) {
+                    leaveRoom();
+                }
+
+                if (!currentUserId) {
+                    alert('Please wait for user creation to complete');
+                    return;
+                }
+
+                if (!localStream) {
+                    alert('Please start your camera first');
+                    return;
+                }
+
+                // Create WebSocket with proper protocol
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const ws = new WebSocket(
+                    `${protocol}//${window.location.host}/ws?room=${roomId}&user_id=${currentUserId}`
+                );
+
+                // Add connection error handling
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    alert('Failed to connect to room');
+                };
+
+                ws.onopen = () => {
+                    console.log('WebSocket connected');
+                };
+
+                ws.onclose = () => {
+                    console.log('WebSocket closed');
+                    if (currentRoom === roomId) {
+                        currentRoom = null;
+                        currentWs = null;
+                    }
+                };
+
+                // Store current room info
+                currentRoom = roomId;
+                currentWs = ws;
+
+                // Setup WebRTC
+                const peerConnections = {};
+
+                // ICE configuration with STUN server
+                const rtcConfig = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                };
+
+                function setupPeerConnection(pc, peerId) {
+                    // Add local stream tracks
+                    localStream.getTracks().forEach(track => {
+                        console.log(`Adding local track: ${track.kind}`);
+                        pc.addTrack(track, localStream);
+                    });
+
+                    // Handle ICE candidates
+                    pc.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            ws.send(JSON.stringify({
+                                type: 'ice',
+                                target: peerId,
+                                candidate: event.candidate
+                            }));
+                        }
+                    };
+
+                    // Handle remote tracks
+                    pc.ontrack = (event) => {
+                        console.log('Track received:', event.track.kind);
+                        const stream = event.streams[0];
+                        if (stream) {
+                            let video = document.getElementById(`peer-${peerId}`);
+                            if (!video) {
+                                video = document.createElement('video');
+                                video.id = `peer-${peerId}`;
+                                video.autoplay = true;
+                                video.playsinline = true;
+                                remoteVideos.appendChild(video);
+                            }
+                            video.srcObject = stream;
+                        }
+                    };
+
+                    return pc;
+                }
+
+                ws.onmessage = async (event) => {
+                    const data = JSON.parse(event.data);
+                    console.log('Received message:', data);
+ 
+                    if (data.type === 'peer-joined') {
+                        const pc = new RTCPeerConnection(rtcConfig);
+                        peerConnections[data.peer_id] = setupPeerConnection(pc, data.peer_id);
+
+                        // Create and send offer
+                        try {
+                            const offer = await pc.createOffer();
+                            await pc.setLocalDescription(offer);
+                            ws.send(JSON.stringify({
+                                type: 'offer',
+                                target: data.peer_id,
+                                sdp: offer
+                            }));
+                        } catch (e) {
+                            console.error('Error creating offer:', e);
+                        }
+                    } else if (data.type === 'offer') {
+                        const pc = new RTCPeerConnection(rtcConfig);
+                        peerConnections[data.from] = setupPeerConnection(pc, data.from);
+
+                        try {
+                            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                            const answer = await pc.createAnswer();
+                            await pc.setLocalDescription(answer);
+                            ws.send(JSON.stringify({
+                                type: 'answer',
+                                target: data.from,
+                                sdp: answer
+                            }));
+                        } catch (e) {
+                            console.error('Error handling offer:', e);
+                        }
+                    } else if (data.type === 'ice') {
+                        const pc = peerConnections[data.from];
+                        if (pc) {
+                            try {
+                                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                            } catch (e) {
+                                console.error('Error adding ICE candidate:', e);
+                            }
+                        }
+                    }
+                };
+            } catch (error) {
+                console.error('Error in joinRoom:', error);
+                alert('Failed to join room: ' + error.message);
+            } finally {
+                console.groupEnd();
+            }
+        }
+
+        async function leaveRoom() {
+            try {
+                if (!currentRoom || !currentUserId) return;
+
+                // Call leave room endpoint
+                await fetch(`/api/rooms/${currentRoom}/leave?user_id=${currentUserId}`, {
+                    method: 'POST'
+                });
+
+                // Close WebSocket connection
+                if (currentWs) {
+                    currentWs.close();
+                }
+
+                // Clear video elements
+                remoteVideos.innerHTML = '';
+
+                // Reset state
+                currentRoom = null;
+                currentWs = null;
+            } catch (error) {
+                console.error('Error leaving room:', error);
+            }
         }
     </script>
 </body>
-</html> 
+</html>
